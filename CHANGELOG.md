@@ -8,6 +8,15 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `"browsingData"` permission in `manifest.json` for client-side storage cleanup (`localStorage`, `indexedDB`, `cacheStorage`, `serviceWorkers`) on Log Out without revoking backend session tokens
+
+### Fixed
+- Log Out now clears parent/root domains and queries by URL in `clearDomainCookies` so subdomain sessions (e.g. `app.example.com`) are reliably cleared
+- `clearDomainCookies` now queries 4 domain variants matching `captureSessionCookies`, preventing missed leading-dot cookies on Chrome and Brave
+- `deleteSingleCookie` now uses dual protocol fallback (`https`/`http`), passes `partitionKey` for partitioned cookies (CHIPS), and detects null removal results
+- UI active session badge now clears immediately on Log Out in `popup.js`
+
 ---
 
 ## [1.2.0] — 2026-06-30

@@ -201,13 +201,32 @@ async function handleClearCurrentCookies(sendResponse) {
 
   const storeId = resolveStoreId(tab);
 
-  // Log out harus membersihkan domain utama + subdomain auth (accounts.google.com,
-  // auth.openai.com, dst). Tanpa ini, situs yang menyimpan session di subdomain
-  // auth tetap login meski cookie domain utama sudah dihapus.
-  const allDomains = [domain, ...getExtraDomains(domain)];
+  // Log out harus membersihkan domain utama + subdomain auth + parent domain jika ada.
+  // Tanpa ini, situs yang menyimpan session di subdomain auth atau parent domain tetap login.
+  const extraDomains = getExtraDomains(domain);
+  const allDomains = [domain, ...extraDomains];
+
+  const baseDomain = domain.includes(':') ? domain.split(':')[0] : domain;
+  const cleanDomain = baseDomain.startsWith('.') ? baseDomain.slice(1) : baseDomain;
+  const parts = cleanDomain.split('.');
+  if (parts.length > 2) {
+    const rootDomain = parts.slice(-2).join('.');
+    if (!allDomains.includes(rootDomain)) {
+      allDomains.push(rootDomain);
+    }
+  }
+
   let cleared = 0;
   for (const d of allDomains) {
-    cleared += await cookieManager.clearDomainCookies(d, storeId);
+    cleared += await cookieManager.clearDomainCookies(d, storeId, tab.url);
+  }
+
+  // Bersihkan juga browsingData (localStorage, indexedDB, cacheStorage, serviceWorkers)
+  // lokal di browser secara client-side SAJA, TANPA memanggil endpoint logout server.
+  // Dengan ini session token di backend tidak revoke/expired, tapi browser bersih.
+  if (tab.url.startsWith('http://') || tab.url.startsWith('https://')) {
+    const origins = getValidOrigins(tab.url, allDomains);
+    await clearBrowsingDataForOrigins(origins);
   }
 
   await reloadTab(tab.id);
@@ -322,6 +341,59 @@ function reloadTab(tabId) {
       }
       resolve();
     });
+  });
+}
+
+/**
+ * getValidOrigins(tabUrl, domains) — Bentuk list origin valid untuk browsingData.remove.
+ */
+function getValidOrigins(tabUrl, domains) {
+  const origins = new Set();
+  try {
+    const parsed = new URL(tabUrl);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      origins.add(parsed.origin);
+    }
+  } catch {
+    // Ignore invalid tab URL
+  }
+
+  for (const d of domains) {
+    const clean = d.replace(/^\./, '').replace(/^www\./, '');
+    if (clean && !clean.includes('/')) {
+      origins.add(`https://${clean}`);
+      origins.add(`http://${clean}`);
+    }
+  }
+
+  return Array.from(origins);
+}
+
+/**
+ * clearBrowsingDataForOrigins(origins) — Bersihkan storage browser lokal tanpa revoke sesi server.
+ */
+function clearBrowsingDataForOrigins(origins) {
+  return new Promise((resolve) => {
+    if (!chrome.browsingData || !chrome.browsingData.remove || !origins || origins.length === 0) {
+      resolve();
+      return;
+    }
+    chrome.browsingData.remove(
+      { origins },
+      {
+        cache: true,
+        cacheStorage: true,
+        indexedDB: true,
+        localStorage: true,
+        serviceWorkers: true,
+      },
+      () => {
+        if (chrome.runtime.lastError) {
+          console.warn('[Background] clearBrowsingData warning:', chrome.runtime.lastError.message);
+        }
+        resolve();
+      }
+    );
   });
 }
 

@@ -15,8 +15,8 @@ Because Manifest V3 enforces a strict security and memory-management model, the 
 
 - Acts as the "brain" (*core logic controller*) of the extension, running behind the scenes.
 - Follows an *Event-Driven* model: the *Service Worker* sleeps automatically when idle and only *wakes up* passively when triggered by an event such as `chrome.runtime.onMessage`.
-- The **single place** where calls to and from the browser *engine APIs* (`chrome.cookies`, `chrome.storage`, `chrome.tabs`) operate. This centralizes the *data flow*.
-- Handles complex system flows, such as opening a tab to a profile (*normal/incognito*) and then distributing cookie injection into each *CookieStore* safely and *non-blocking/async*.
+- The **single place** where calls to and from the browser *engine APIs* (`chrome.cookies`, `chrome.storage`, `chrome.tabs`, `chrome.browsingData`) operate. This centralizes the *data flow*.
+- Handles complex system flows, such as opening a tab to a profile (*normal/incognito*), distributing cookie injection into each *CookieStore* safely, and performing client-side storage cleanup (`chrome.browsingData.remove`) during Log Out so local web tokens are wiped without triggering server session invalidation.
 
 ## 3. Abstraction / Utility Context (`utils/`)
 
