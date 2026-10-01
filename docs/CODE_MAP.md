@@ -26,7 +26,7 @@ profile-switcher/
 
 ### Root Directory
 - **`manifest.json`**
-  The key *manifest* file that identifies this project to Google Chrome as an extension. It declares the description and release version, defines which *permissions* the extension requests (e.g. `cookies`, `storage`, `tabs`), points the *Service Worker* entry to `background.js`, and sets optional configuration such as `"incognito": "spanning"` which lets the extension work in *private/Incognito* windows.
+  The key *manifest* file that identifies this project to Google Chrome as an extension. It declares the description and release version, defines which *permissions* the extension requests (e.g. `cookies`, `storage`, `tabs`, `browsingData`), points the *Service Worker* entry to `background.js`, and sets optional configuration such as `"incognito": "spanning"` which lets the extension work in *private/Incognito* windows.
 
 - **`background.js`**
   The orchestrator and main engine of the project. It contains the single message listener (an action *switch/case*) for requests sent by `popup.js` via message payloads (`SAVE_SESSION`, `LOAD_SESSION`, `DELETE_SESSION`, `CLEAR_CURRENT_COOKIES`, `GET_ALL_SESSIONS`, `GET_STORAGE_INFO`). It does not manage the UI; instead it orchestrates the flow between the active tab and data retrieval through `cookieManager`, then persists the result via `storageManager`.

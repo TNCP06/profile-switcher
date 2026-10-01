@@ -118,18 +118,57 @@ async function restoreSessionCookies(domain, cookies, tabUrl, storeId) {
   }
 }
 
-async function clearDomainCookies(domain, storeId) {
+async function clearDomainCookies(domain, storeId, tabUrl) {
   try {
     const baseDomain = domain.includes(':') ? domain.split(':')[0] : domain;
     const cleanDomain = baseDomain.startsWith('.') ? baseDomain.slice(1) : baseDomain;
-    const query = { domain: cleanDomain };
-    if (storeId) query.storeId = storeId;
+    const withoutWww  = cleanDomain.replace(/^www\./, '');
 
-    const cookies = await chromeGetAllCookies(query);
-    if (!cookies || cookies.length === 0) return 0;
+    // Query 4 variasi domain (sama seperti captureSessionCookies)
+    const queries = [
+      { domain: cleanDomain },
+      { domain: withoutWww },
+      { domain: `.${cleanDomain}` },
+      { domain: `.${withoutWww}` },
+    ];
+
+    if (tabUrl) {
+      queries.push({ url: tabUrl });
+    }
+
+    const seenQuery = new Set();
+    const uniqueQueries = queries.filter(q => {
+      const key = q.url ? `url:${q.url}` : `domain:${q.domain}`;
+      if (seenQuery.has(key)) return false;
+      seenQuery.add(key);
+      return true;
+    });
+
+    let allCookies = [];
+    for (const q of uniqueQueries) {
+      try {
+        const queryObj = { ...q };
+        if (storeId) queryObj.storeId = storeId;
+        const cookies = await chromeGetAllCookies(queryObj);
+        allCookies = allCookies.concat(cookies);
+      } catch (err) {
+        console.warn(`[CookieManager] clearDomainCookies query error:`, err.message);
+      }
+    }
+
+    if (allCookies.length === 0) return 0;
+
+    // Deduplikasi cookie sebelum dihapus berdasarkan name|domain|path
+    const seenKeys = new Set();
+    const uniqueCookies = allCookies.filter(cookie => {
+      const key = `${cookie.name}|${cookie.domain}|${cookie.path}`;
+      if (seenKeys.has(key)) return false;
+      seenKeys.add(key);
+      return true;
+    });
 
     const results = await Promise.allSettled(
-      cookies.map(cookie => deleteSingleCookie(cookie, storeId))
+      uniqueCookies.map(cookie => deleteSingleCookie(cookie, storeId))
     );
     return results.filter(r => r.status === 'fulfilled').length;
   } catch (err) {
@@ -138,22 +177,50 @@ async function clearDomainCookies(domain, storeId) {
   }
 }
 
-function deleteSingleCookie(cookie, storeId) {
-  return new Promise((resolve, reject) => {
-    const cleanDomain = cookie.domain.startsWith('.') ? cookie.domain.slice(1) : cookie.domain;
-    const protocol    = cookie.secure ? 'https' : 'http';
-    const url         = `${protocol}://${cleanDomain}${cookie.path || '/'}`;
-    const details     = { url, name: cookie.name };
-    if (storeId) details.storeId = storeId;
-
+function removeCookieAttempt(details) {
+  return new Promise((resolve) => {
     chrome.cookies.remove(details, (result) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
+      if (chrome.runtime.lastError || !result) {
+        resolve(null);
+      } else {
+        resolve(result);
       }
-      resolve(result);
     });
   });
+}
+
+async function deleteSingleCookie(cookie, storeId) {
+  const cleanDomain = cookie.domain.startsWith('.') ? cookie.domain.slice(1) : cookie.domain;
+  const path = cookie.path || '/';
+
+  const baseDetails = {
+    name: cookie.name,
+    ...(storeId ? { storeId } : {}),
+  };
+  if (cookie.partitionKey) {
+    baseDetails.partitionKey = cookie.partitionKey;
+  }
+
+  // Prioritas protokol: coba https dulu untuk HSTS, fallback ke http
+  const primaryProtocol = cookie.secure ? 'https' : 'http';
+  const fallbackProtocol = cookie.secure ? 'http' : 'https';
+
+  let result = await removeCookieAttempt({
+    ...baseDetails,
+    url: `${primaryProtocol}://${cleanDomain}${path}`,
+  });
+
+  if (!result) {
+    result = await removeCookieAttempt({
+      ...baseDetails,
+      url: `${fallbackProtocol}://${cleanDomain}${path}`,
+    });
+  }
+
+  if (!result) {
+    throw new Error(`Gagal menghapus cookie "${cookie.name}" di "${cookie.domain}"`);
+  }
+  return result;
 }
 
 async function injectCookies(cookies, tabUrl, storeId) {

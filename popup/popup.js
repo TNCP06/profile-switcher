@@ -204,6 +204,10 @@ async function handleClearCookies() {
     const response = await sendMessage({ action: 'CLEAR_CURRENT_COOKIES' });
 
     if (response.success) {
+      activeSessionId = null;
+      await clearActiveSessionFromStorage();
+      await refreshSessionGrid();
+
       const count = response.data?.cleared ?? 0;
       if (count > 0) {
         showToast('✓ Berhasil log out', 'success');

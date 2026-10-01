@@ -44,18 +44,22 @@ This document describes the main workflows of the Profile Switcher extension fro
 
 ## 3. Log Out (Clear Current Cookies)
 
-**Goal:** Sign the user out of the active site by removing its cookies from the current tab's cookie store.
+**Goal:** Sign the user out of the active site locally by removing its cookies and client-side web storage from the current tab's scope, without revoking the session on the server.
 
 **User Flow:**
 1. The user opens a site they are logged in to and opens the extension.
 2. The user presses the **Log Out** button.
-3. The tab reloads and the user is signed out.
+3. The active session badge (if any) is cleared, the tab reloads, and the user is signed out.
 
 **System Flow:**
 1. **Popup UI** sends a `CLEAR_CURRENT_COOKIES` action to the *Service Worker*.
-2. **Service Worker** resolves the active tab's domain and cookie store.
-3. **Service Worker** instructs **Cookie Manager** to clear cookies for the primary domain **and** its auth subdomains (via `getExtraDomains()` — e.g. `accounts.google.com`, `auth.openai.com`). Without clearing the auth subdomains, sites that store their session there would remain logged in.
-4. The tab is reloaded so the page reflects the signed-out state.
+2. **Service Worker** resolves the active tab's domain, candidate root domains, auth subdomains (via `getExtraDomains()`), and cookie store.
+3. **Service Worker** instructs **Cookie Manager** to clear cookies matching:
+   - The active tab URL (catching path-specific and parent domain cookies).
+   - 4 domain query variants (with/without leading dot, with/without www) for the primary domain, root domain, and auth subdomains.
+4. **Service Worker** calls `chrome.browsingData.remove()` specifically for the tab's origins to wipe `localStorage`, `indexedDB`, `cacheStorage`, and `serviceWorkers` locally in the browser. Crucially, this is purely client-side; no backend logout endpoint is triggered, so saved session cookies are not revoked on the server.
+5. The tab is reloaded so the page reflects the signed-out state.
+6. **Popup UI** clears `activeSessionId` from `chrome.storage.session` and re-renders the session grid so the "Active" badge disappears.
 
 ---
 
