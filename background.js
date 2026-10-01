@@ -41,6 +41,15 @@ async function handleMessage(message, sendResponse) {
       case 'CLEAR_CURRENT_COOKIES':
         await handleClearCurrentCookies(sendResponse);
         break;
+      case 'GET_CURRENT_TAB_COOKIES':
+        await handleGetCurrentTabCookies(sendResponse);
+        break;
+      case 'IMPORT_SESSIONS':
+        await handleImportSessions(payload, sendResponse);
+        break;
+      case 'IMPORT_SINGLE_SESSION':
+        await handleImportSingleSession(payload, sendResponse);
+        break;
       default:
         sendResponse({ success: false, error: `Action tidak dikenal: ${action}` });
     }
@@ -231,6 +240,86 @@ async function handleClearCurrentCookies(sendResponse) {
 
   await reloadTab(tab.id);
   sendResponse({ success: true, data: { cleared } });
+}
+
+async function handleGetCurrentTabCookies(sendResponse) {
+  const tab = await getActiveTab();
+  if (!tab || !tab.url) {
+    sendResponse({ success: false, error: 'Tidak bisa membaca tab aktif' });
+    return;
+  }
+
+  const domain = cookieManager.getDomainFromUrl(tab.url);
+  if (!domain) {
+    sendResponse({ success: false, error: 'URL tab tidak valid' });
+    return;
+  }
+
+  const extraDomains = getExtraDomains(domain);
+  const allDomains = [domain, ...extraDomains];
+  let allCookies = [];
+
+  for (const d of allDomains) {
+    const cookies = await cookieManager.captureSessionCookies(d);
+    allCookies = allCookies.concat(cookies);
+  }
+
+  const seen = new Set();
+  const uniqueCookies = allCookies.filter(c => {
+    const key = `${c.name}|${c.domain}|${c.path}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  sendResponse({
+    success: true,
+    data: {
+      domain,
+      url: tab.url,
+      cookies: uniqueCookies,
+    }
+  });
+}
+
+async function handleImportSessions(payload, sendResponse) {
+  const { sessions } = payload || {};
+  if (!sessions || typeof sessions !== 'object' || Object.keys(sessions).length === 0) {
+    sendResponse({ success: false, error: 'Tidak ada sesi valid untuk diimpor' });
+    return;
+  }
+
+  const result = await storageManager.importSessions(sessions);
+  sendResponse({ success: true, data: { count: result.importedCount } });
+}
+
+async function handleImportSingleSession(payload, sendResponse) {
+  const { name, domain, cookies, url } = payload || {};
+
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    sendResponse({ success: false, error: 'Nama sesi tidak boleh kosong' });
+    return;
+  }
+
+  if (!cookies || !Array.isArray(cookies) || cookies.length === 0) {
+    sendResponse({ success: false, error: 'Daftar cookie kosong atau tidak valid' });
+    return;
+  }
+
+  const cleanDomain = domain || (cookies[0] && cookies[0].domain ? cookies[0].domain.replace(/^\./, '') : 'imported');
+  const sessionId = `session_${Date.now()}`;
+  const sessionData = {
+    name: name.trim().slice(0, 40),
+    domain: cleanDomain,
+    url: url || `https://${cleanDomain}/`,
+    extraDomains: getExtraDomains(cleanDomain),
+    savedAt: Date.now(),
+    cookieCount: cookies.length,
+    cookies: cookies,
+  };
+
+  await storageManager.saveSession(sessionId, sessionData);
+  sendResponse({ success: true, data: { sessionId } });
 }
 
 async function handleDeleteSession(payload, sendResponse) {

@@ -77,3 +77,27 @@ This document describes the main workflows of the Profile Switcher extension fro
 2. **Service Worker** delegates to **Storage Manager** to load the existing database object and filter out the session with that ID.
 3. The modified object is written back, overwriting the previous database state.
 4. A success confirmation is returned to the UI, triggering a refresh.
+
+---
+
+## 5. Import & Export
+
+**Goal:** Enable users to share, migrate, and backup sessions and cookies across devices in multiple standard formats.
+
+**User Flow:**
+1. The user clicks **Import / Export** in the action row.
+2. An overlay modal opens with **Export** and **Import** tabs:
+   - **Export:** Select data source (Active Tab Cookies, Selected Domain Sessions, or All Saved Profiles Backup) and format (`JSON Standard / Cookie-Editor`, `JSON Profile Switcher Backup`, `Netscape HTTP text`, or `Header String`). Preview updates live; user clicks **Copy** or **Download File**.
+   - **Import:** Select a `.json` or `.txt` file, or paste text into the textarea. The extension auto-detects the format (Full Backup, Cookie-Editor array, or Netscape HTTP text). If importing a cookie array, the user can adjust the session name. Click **Import Data**.
+3. The session list updates immediately with the imported profiles.
+
+**System Flow:**
+1. **Export Flow:**
+   - **Popup UI** fetches current tab cookies via `GET_CURRENT_TAB_COOKIES` or saved sessions via `GET_ALL_SESSIONS`.
+   - Data is transformed using client-side format serializers (`cookiesToStandardJson`, `sessionsToBackupJson`, `cookiesToNetscape`, `cookiesToHeaderString`).
+   - Content is copied via `navigator.clipboard.writeText` or downloaded via a browser Blob object URL.
+2. **Import Flow:**
+   - **Popup UI** inspects and parses the input via `detectAndParseImport()`.
+   - Sends `IMPORT_SESSIONS` (for full backup) or `IMPORT_SINGLE_SESSION` (for cookie array / Netscape) to **Service Worker**.
+   - **Service Worker** invokes **Storage Manager** (`importSessions()` or `saveSession()`) using atomic read-modify-write with collision-free ID resolution.
+   - UI grid is refreshed and a confirmation toast is displayed.

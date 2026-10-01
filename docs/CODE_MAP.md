@@ -29,14 +29,14 @@ profile-switcher/
   The key *manifest* file that identifies this project to Google Chrome as an extension. It declares the description and release version, defines which *permissions* the extension requests (e.g. `cookies`, `storage`, `tabs`, `browsingData`), points the *Service Worker* entry to `background.js`, and sets optional configuration such as `"incognito": "spanning"` which lets the extension work in *private/Incognito* windows.
 
 - **`background.js`**
-  The orchestrator and main engine of the project. It contains the single message listener (an action *switch/case*) for requests sent by `popup.js` via message payloads (`SAVE_SESSION`, `LOAD_SESSION`, `DELETE_SESSION`, `CLEAR_CURRENT_COOKIES`, `GET_ALL_SESSIONS`, `GET_STORAGE_INFO`). It does not manage the UI; instead it orchestrates the flow between the active tab and data retrieval through `cookieManager`, then persists the result via `storageManager`.
+  The orchestrator and main engine of the project. It contains the single message listener (an action *switch/case*) for requests sent by `popup.js` via message payloads (`SAVE_SESSION`, `LOAD_SESSION`, `DELETE_SESSION`, `CLEAR_CURRENT_COOKIES`, `GET_ALL_SESSIONS`, `GET_STORAGE_INFO`, `GET_CURRENT_TAB_COOKIES`, `IMPORT_SESSIONS`, `IMPORT_SINGLE_SESSION`). It does not manage the UI; instead it orchestrates the flow between the active tab and data retrieval through `cookieManager`, then persists the result via `storageManager`.
 
 ### `popup/` Folder
 - **`popup.html`**
-  A simple HTML file representing the base page (the *layout* container and main *box-sizing*) for the popup panel. It includes the header section for session-save input, the list box for domain cards, and the per-domain detail view.
+  A simple HTML file representing the base page (the *layout* container and main *box-sizing*) for the popup panel. It includes the header section for session-save input, the list box for domain cards, the per-domain detail view, and the Import/Export modal dialog.
 
 - **`popup.css`**
-  The component styling file. The extension uses an elegant dark theme built with modern *CSS Variables*, *Flexbox* layouts, and subtle *hover transitions* to deliver a premium UI feel without depending on a heavy external *framework* like *Tailwind* or *Bootstrap*.
+  The component styling file. The extension uses an elegant dark theme built with modern *CSS Variables*, *Flexbox* layouts, subtle *hover transitions*, and modal overlay styles to deliver a premium UI feel without depending on a heavy external *framework* like *Tailwind* or *Bootstrap*.
 
 - **`popup.js`**
   The dedicated UI driver (*frontend logic*). Its job is to manipulate the *DOM* of the `.html` above so it reflects the real *database* content responsively. Its main responsibilities:
@@ -44,6 +44,7 @@ profile-switcher/
   - Calculate and *group* saved sessions that share the same target URL (*host/port*) so they don't appear duplicated.
   - Render error messages and manage *loading state / disabled buttons*.
   - Render the dynamic card components using native browser APIs (`document.createElement()`).
+  - Manage the Import/Export modal, format conversions (Standard JSON, Backup JSON, Netscape, Header String), clipboard copying, and file upload/download.
 
 ### `utils/` Folder
 - **`cookieManager.js`**
