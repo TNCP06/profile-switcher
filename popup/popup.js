@@ -32,8 +32,30 @@ const $ = {
   detailDomainName:  document.getElementById('detail-domain-name'),
   detailSessionList: document.getElementById('detail-session-list'),
   // Footer
-  versionTag:        document.getElementById('version-tag'),
-  storageWarning:    document.getElementById('storage-warning'),
+  versionTag:           document.getElementById('version-tag'),
+  storageWarning:       document.getElementById('storage-warning'),
+  // Import/Export Modal
+  btnOpenIo:            document.getElementById('btn-open-io'),
+  modalIo:              document.getElementById('modal-io'),
+  btnCloseModal:        document.getElementById('btn-close-modal'),
+  tabExport:            document.getElementById('tab-export'),
+  tabImport:            document.getElementById('tab-import'),
+  panelExport:          document.getElementById('panel-export'),
+  panelImport:          document.getElementById('panel-import'),
+  exportSource:         document.getElementById('export-source'),
+  exportFormat:         document.getElementById('export-format'),
+  exportPreview:        document.getElementById('export-preview'),
+  exportPreviewInfo:    document.getElementById('export-preview-info'),
+  btnCopyExport:        document.getElementById('btn-copy-export'),
+  btnDownloadExport:    document.getElementById('btn-download-export'),
+  importFileInput:      document.getElementById('import-file-input'),
+  importFileName:       document.getElementById('import-file-name'),
+  importTextarea:       document.getElementById('import-textarea'),
+  importDetectedBar:    document.getElementById('import-detected-bar'),
+  importDetectedText:   document.getElementById('import-detected-text'),
+  importSessionNameRow: document.getElementById('import-session-name-row'),
+  importSessionName:    document.getElementById('import-session-name'),
+  btnDoImport:          document.getElementById('btn-do-import'),
 };
 
 /* ── STATE LOKAL ──────────────────────────────────────────────── */
@@ -65,6 +87,27 @@ async function init() {
     $.btnBack.addEventListener('click', hideDomainView);
     $.btnManage.addEventListener('click', toggleDeleteMode);
     $.sessionGrid.addEventListener('scroll', updateScrollFade);
+
+    // Modal Import / Export listeners
+    $.btnOpenIo.addEventListener('click', openModalIo);
+    $.btnCloseModal.addEventListener('click', closeModalIo);
+    $.modalIo.addEventListener('click', (e) => {
+      if (e.target === $.modalIo) closeModalIo();
+    });
+    $.tabExport.addEventListener('click', () => switchIoTab('export'));
+    $.tabImport.addEventListener('click', () => switchIoTab('import'));
+    $.exportSource.addEventListener('change', updateExportPreview);
+    $.exportFormat.addEventListener('change', updateExportPreview);
+    $.btnCopyExport.addEventListener('click', handleCopyExport);
+    $.btnDownloadExport.addEventListener('click', handleDownloadExport);
+    $.importFileInput.addEventListener('change', handleImportFileSelect);
+    $.importTextarea.addEventListener('input', handleImportTextInput);
+    $.btnDoImport.addEventListener('click', handleExecuteImport);
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && $.modalIo && $.modalIo.style.display !== 'none') {
+        closeModalIo();
+      }
+    });
 
     // Inject version from manifest so popup.html never needs manual bumping
     $.versionTag.textContent = 'v' + chrome.runtime.getManifest().version;
@@ -558,6 +601,7 @@ function getCurrentDomain() {
 function setLoadingState(isLoading) {
   $.btnSave.disabled         = isLoading;
   $.btnClearCookies.disabled = isLoading;
+  if ($.btnOpenIo) $.btnOpenIo.disabled = isLoading;
 
   document.querySelectorAll('.btn-load, .btn-delete').forEach((btn) => {
     btn.disabled = isLoading;
@@ -627,6 +671,419 @@ function formatTimeAgo(timestamp) {
   if (diffHr  < 24)  return `saved ${diffHr}h ago`;
   if (diffDay < 30)  return `saved ${diffDay}d ago`;
   return 'saved long ago';
+}
+
+/* ================================================================
+   MODAL IMPORT / EXPORT LOGIC & FORMAT CONVERTERS
+================================================================ */
+
+let parsedImportData = null;
+
+async function openModalIo() {
+  $.modalIo.style.display = 'flex';
+  switchIoTab('export');
+
+  // Reset import form
+  $.importFileInput.value = '';
+  $.importFileName.textContent = 'atau paste teks:';
+  $.importTextarea.value = '';
+  $.importDetectedBar.style.display = 'none';
+  $.importSessionNameRow.style.display = 'none';
+  $.importSessionName.value = '';
+  $.btnDoImport.disabled = true;
+  parsedImportData = null;
+
+  // Sesuaikan opsi sumber export jika sedang di detail view
+  const sourceSelect = $.exportSource;
+  const existingDomainOpt = sourceSelect.querySelector('option[value="detail"]');
+  if (existingDomainOpt) existingDomainOpt.remove();
+
+  if (currentDetailDomain) {
+    const opt = document.createElement('option');
+    opt.value = 'detail';
+    opt.textContent = `Sesi Domain Ini (${currentDetailDomain})`;
+    sourceSelect.appendChild(opt);
+  }
+
+  await updateExportPreview();
+}
+
+function closeModalIo() {
+  $.modalIo.style.display = 'none';
+}
+
+function switchIoTab(tab) {
+  if (tab === 'export') {
+    $.tabExport.classList.add('active');
+    $.tabImport.classList.remove('active');
+    $.panelExport.style.display = 'flex';
+    $.panelImport.style.display = 'none';
+    updateExportPreview();
+  } else {
+    $.tabExport.classList.remove('active');
+    $.tabImport.classList.add('active');
+    $.panelExport.style.display = 'none';
+    $.panelImport.style.display = 'flex';
+  }
+}
+
+async function updateExportPreview() {
+  const source = $.exportSource.value;
+  const format = $.exportFormat.value;
+
+  $.exportPreview.value = 'Memuat data…';
+  $.exportPreviewInfo.textContent = '…';
+
+  try {
+    if (source === 'all') {
+      const res = await sendMessage({ action: 'GET_ALL_SESSIONS' });
+      const sessions = res.success ? (res.data || {}) : {};
+      const count = Object.keys(sessions).length;
+
+      if (format === 'json-standard') {
+        const allCookies = Object.values(sessions).flatMap(s => s.cookies || []);
+        $.exportPreview.value = cookiesToStandardJson(allCookies);
+        $.exportPreviewInfo.textContent = `${count} sesi (${allCookies.length} cookies)`;
+      } else if (format === 'netscape') {
+        const allCookies = Object.values(sessions).flatMap(s => s.cookies || []);
+        $.exportPreview.value = cookiesToNetscape(allCookies);
+        $.exportPreviewInfo.textContent = `${allCookies.length} cookies`;
+      } else if (format === 'header') {
+        const allCookies = Object.values(sessions).flatMap(s => s.cookies || []);
+        $.exportPreview.value = cookiesToHeaderString(allCookies);
+        $.exportPreviewInfo.textContent = `${allCookies.length} cookies`;
+      } else {
+        $.exportPreview.value = sessionsToBackupJson(sessions);
+        $.exportPreviewInfo.textContent = `${count} sesi total`;
+      }
+    } else if (source === 'detail' && currentDetailDomain) {
+      const res = await sendMessage({ action: 'GET_ALL_SESSIONS' });
+      const allSessions = res.success ? (res.data || {}) : {};
+      const domainSessions = {};
+      let cookiesCount = 0;
+      for (const [id, s] of Object.entries(allSessions)) {
+        if (s.domain === currentDetailDomain) {
+          domainSessions[id] = s;
+          cookiesCount += (s.cookies || []).length;
+        }
+      }
+
+      if (format === 'json-standard') {
+        const cookies = Object.values(domainSessions).flatMap(s => s.cookies || []);
+        $.exportPreview.value = cookiesToStandardJson(cookies);
+        $.exportPreviewInfo.textContent = `${cookies.length} cookies`;
+      } else if (format === 'netscape') {
+        const cookies = Object.values(domainSessions).flatMap(s => s.cookies || []);
+        $.exportPreview.value = cookiesToNetscape(cookies);
+        $.exportPreviewInfo.textContent = `${cookies.length} cookies`;
+      } else if (format === 'header') {
+        const cookies = Object.values(domainSessions).flatMap(s => s.cookies || []);
+        $.exportPreview.value = cookiesToHeaderString(cookies);
+        $.exportPreviewInfo.textContent = `${cookies.length} cookies`;
+      } else {
+        $.exportPreview.value = sessionsToBackupJson(domainSessions);
+        $.exportPreviewInfo.textContent = `${Object.keys(domainSessions).length} sesi`;
+      }
+    } else {
+      const res = await sendMessage({ action: 'GET_CURRENT_TAB_COOKIES' });
+      if (!res.success) {
+        $.exportPreview.value = `Gagal membaca cookies tab: ${res.error || 'Unknown error'}`;
+        $.exportPreviewInfo.textContent = '0 cookie';
+        return;
+      }
+
+      const cookies = res.data?.cookies || [];
+      if (format === 'json-standard') {
+        $.exportPreview.value = cookiesToStandardJson(cookies);
+      } else if (format === 'netscape') {
+        $.exportPreview.value = cookiesToNetscape(cookies);
+      } else if (format === 'header') {
+        $.exportPreview.value = cookiesToHeaderString(cookies);
+      } else {
+        const domain = res.data?.domain || 'current';
+        const singleSession = {
+          name: `${domain} (Snapshot)`,
+          domain,
+          url: res.data?.url || `https://${domain}/`,
+          extraDomains: [],
+          savedAt: Date.now(),
+          cookieCount: cookies.length,
+          cookies,
+        };
+        $.exportPreview.value = sessionsToBackupJson({ [`session_${Date.now()}`]: singleSession });
+      }
+      $.exportPreviewInfo.textContent = `${cookies.length} cookies`;
+    }
+  } catch (err) {
+    console.error('[Popup] updateExportPreview error:', err);
+    $.exportPreview.value = `Error: ${err.message}`;
+  }
+}
+
+async function handleCopyExport() {
+  const text = $.exportPreview.value;
+  if (!text || text.startsWith('Memuat') || text.startsWith('Gagal') || text.startsWith('Error')) return;
+
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('✓ Disalin ke clipboard', 'success');
+  } catch (err) {
+    showToast('Gagal menyalin ke clipboard', 'error');
+  }
+}
+
+function handleDownloadExport() {
+  const text = $.exportPreview.value;
+  if (!text || text.startsWith('Memuat') || text.startsWith('Gagal') || text.startsWith('Error')) return;
+
+  const format = $.exportFormat.value;
+  const isAll = $.exportSource.value === 'all';
+  const ext = format === 'netscape' || format === 'header' ? 'txt' : 'json';
+  const mime = format === 'netscape' || format === 'header' ? 'text/plain' : 'application/json';
+  const domainPart = isAll ? 'all-sessions' : ($.currentDomain.textContent || 'cookies').replace(/[^a-zA-Z0-9.-]/g, '_');
+  const filename = `profile_switcher_${domainPart}_${Date.now()}.${ext}`;
+
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  showToast('✓ Unduhan dimulai', 'success');
+}
+
+function handleImportFileSelect(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  $.importFileName.textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    $.importTextarea.value = event.target?.result || '';
+    handleImportTextInput();
+  };
+  reader.readAsText(file);
+}
+
+function handleImportTextInput() {
+  const text = $.importTextarea.value.trim();
+  if (!text) {
+    $.importDetectedBar.style.display = 'none';
+    $.importSessionNameRow.style.display = 'none';
+    $.btnDoImport.disabled = true;
+    parsedImportData = null;
+    return;
+  }
+
+  const parsed = detectAndParseImport(text);
+  if (!parsed) {
+    $.importDetectedBar.style.display = 'block';
+    $.importDetectedBar.style.borderColor = 'rgba(244, 63, 94, 0.4)';
+    $.importDetectedBar.style.background = 'rgba(244, 63, 94, 0.12)';
+    $.importDetectedText.style.color = '#f43f5e';
+    $.importDetectedText.textContent = '⚠ Format tidak dikenali (gunakan JSON atau Netscape)';
+    $.importSessionNameRow.style.display = 'none';
+    $.btnDoImport.disabled = true;
+    parsedImportData = null;
+    return;
+  }
+
+  parsedImportData = parsed;
+  $.importDetectedBar.style.display = 'block';
+  $.importDetectedBar.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+  $.importDetectedBar.style.background = 'rgba(16, 185, 129, 0.12)';
+  $.importDetectedText.style.color = 'var(--success)';
+
+  if (parsed.type === 'backup') {
+    $.importDetectedText.textContent = `✓ Format Backup Profil: ${parsed.count} sesi siap diimpor`;
+    $.importSessionNameRow.style.display = 'none';
+    $.btnDoImport.disabled = false;
+  } else {
+    const typeLabel = parsed.type === 'single-session' ? 'Single Profile' : 'Cookie Array / Netscape';
+    $.importDetectedText.textContent = `✓ ${typeLabel}: ${parsed.count} cookies (${parsed.domain})`;
+    $.importSessionNameRow.style.display = 'flex';
+    if (!$.importSessionName.value) {
+      $.importSessionName.value = parsed.name || `${parsed.domain} (Imported)`;
+    }
+    $.btnDoImport.disabled = false;
+  }
+}
+
+async function handleExecuteImport() {
+  if (!parsedImportData) return;
+
+  setLoadingState(true);
+  setStatus('loading', 'Mengimpor data…');
+
+  try {
+    if (parsedImportData.type === 'backup') {
+      const res = await sendMessage({
+        action: 'IMPORT_SESSIONS',
+        payload: { sessions: parsedImportData.sessions }
+      });
+      if (res.success) {
+        closeModalIo();
+        await refreshSessionGrid();
+        showToast(`✓ Berhasil mengimpor ${res.data?.count || 0} sesi`, 'success');
+        setStatus('ready', 'Storage ready');
+      } else {
+        throw new Error(res.error || 'Gagal mengimpor backup');
+      }
+    } else {
+      const name = $.importSessionName.value.trim() || `${parsedImportData.domain} (Imported)`;
+      const res = await sendMessage({
+        action: 'IMPORT_SINGLE_SESSION',
+        payload: {
+          name,
+          domain: parsedImportData.domain,
+          cookies: parsedImportData.cookies,
+          url: parsedImportData.session?.url
+        }
+      });
+      if (res.success) {
+        closeModalIo();
+        await refreshSessionGrid();
+        showToast(`✓ Sesi "${name}" berhasil diimpor`, 'success');
+        setStatus('ready', 'Storage ready');
+      } else {
+        throw new Error(res.error || 'Gagal mengimpor sesi');
+      }
+    }
+  } catch (err) {
+    console.error('[Popup] handleExecuteImport error:', err);
+    showToast(err.message, 'error');
+    setStatus('error', err.message);
+  } finally {
+    setLoadingState(false);
+  }
+}
+
+function cookiesToNetscape(cookies) {
+  let output = '# Netscape HTTP Cookie File\n# Generated by Profile Switcher\n\n';
+  for (const c of cookies) {
+    const domain = c.domain || '';
+    const flag = domain.startsWith('.') ? 'TRUE' : 'FALSE';
+    const path = c.path || '/';
+    const secure = c.secure ? 'TRUE' : 'FALSE';
+    const expiry = c.expirationDate ? Math.round(c.expirationDate) : 0;
+    const name = c.name || '';
+    const value = c.value || '';
+    output += `${domain}\t${flag}\t${path}\t${secure}\t${expiry}\t${name}\t${value}\n`;
+  }
+  return output;
+}
+
+function parseNetscape(text) {
+  const lines = text.split('\n');
+  const cookies = [];
+  for (let line of lines) {
+    line = line.trim();
+    if (!line || line.startsWith('#')) continue;
+    const parts = line.split('\t');
+    if (parts.length >= 7) {
+      cookies.push({
+        domain: parts[0],
+        path: parts[2] || '/',
+        secure: parts[3].toUpperCase() === 'TRUE',
+        expirationDate: parseInt(parts[4], 10) || undefined,
+        name: parts[5],
+        value: parts[6],
+        sameSite: 'unspecified',
+        httpOnly: false,
+      });
+    }
+  }
+  return cookies;
+}
+
+function cookiesToStandardJson(cookies) {
+  const clean = cookies.map(c => ({
+    name: c.name,
+    value: c.value,
+    domain: c.domain,
+    path: c.path || '/',
+    secure: Boolean(c.secure),
+    httpOnly: Boolean(c.httpOnly),
+    sameSite: c.sameSite || 'unspecified',
+    expirationDate: c.expirationDate,
+  }));
+  return JSON.stringify(clean, null, 2);
+}
+
+function cookiesToHeaderString(cookies) {
+  return cookies.map(c => `${c.name}=${c.value}`).join('; ');
+}
+
+function sessionsToBackupJson(sessions) {
+  return JSON.stringify({
+    version: 1,
+    exportedAt: Date.now(),
+    sessions: sessions,
+  }, null, 2);
+}
+
+function detectAndParseImport(text) {
+  text = text.trim();
+  if (!text) return null;
+
+  if (text.startsWith('{') || text.startsWith('[')) {
+    try {
+      const data = JSON.parse(text);
+      if (Array.isArray(data)) {
+        if (data.length === 0) return null;
+        return {
+          type: 'cookie-array',
+          cookies: data,
+          domain: data[0]?.domain ? data[0].domain.replace(/^\./, '') : 'unknown',
+          count: data.length,
+        };
+      }
+      if (data.version && data.sessions && typeof data.sessions === 'object') {
+        const count = Object.keys(data.sessions).length;
+        return {
+          type: 'backup',
+          sessions: data.sessions,
+          count,
+        };
+      }
+      if (data.cookies && Array.isArray(data.cookies)) {
+        return {
+          type: 'single-session',
+          session: data,
+          cookies: data.cookies,
+          domain: data.domain || (data.cookies[0]?.domain ? data.cookies[0].domain.replace(/^\./, '') : 'unknown'),
+          name: data.name || '',
+          count: data.cookies.length,
+        };
+      }
+      const values = Object.values(data);
+      if (values.length > 0 && values[0]?.cookies && Array.isArray(values[0].cookies)) {
+        return {
+          type: 'backup',
+          sessions: data,
+          count: values.length,
+        };
+      }
+    } catch {
+      // bukan JSON valid, lanjut coba Netscape
+    }
+  }
+
+  const netscapeCookies = parseNetscape(text);
+  if (netscapeCookies.length > 0) {
+    return {
+      type: 'cookie-array',
+      cookies: netscapeCookies,
+      domain: netscapeCookies[0]?.domain ? netscapeCookies[0].domain.replace(/^\./, '') : 'unknown',
+      count: netscapeCookies.length,
+    };
+  }
+
+  return null;
 }
 
 /* ================================================================

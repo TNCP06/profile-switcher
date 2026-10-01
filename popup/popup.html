@@ -38,6 +38,7 @@
       </div>
       <div class="action-row">
         <button id="btn-clear-cookies" class="btn-clear-cookies">Log Out</button>
+        <button id="btn-open-io" class="btn-io" title="Impor atau Ekspor Cookies">Import / Export</button>
       </div>
     </section>
 
@@ -99,6 +100,81 @@
     </footer>
 
   </div><!-- /#app -->
+
+  <!-- ── MODAL IMPORT / EXPORT ──────────────────────────────── -->
+  <div id="modal-io" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-tabs">
+          <button id="tab-export" class="modal-tab active">Export</button>
+          <button id="tab-import" class="modal-tab">Import</button>
+        </div>
+        <button id="btn-close-modal" class="modal-close" title="Tutup">&times;</button>
+      </div>
+
+      <!-- EXPORT PANEL -->
+      <div id="panel-export" class="modal-panel">
+        <div class="modal-field">
+          <label class="modal-label" for="export-source">Sumber Data:</label>
+          <select id="export-source" class="modal-select">
+            <option value="current">Tab Aktif (Cookies Saat Ini)</option>
+            <option value="all">Semua Sesi Tersimpan (Backup)</option>
+          </select>
+        </div>
+
+        <div class="modal-field">
+          <label class="modal-label" for="export-format">Format:</label>
+          <select id="export-format" class="modal-select">
+            <option value="json-standard">JSON (Standard / Cookie-Editor)</option>
+            <option value="json-backup">JSON (Profile Switcher Backup)</option>
+            <option value="netscape">Netscape (curl, yt-dlp, wget)</option>
+            <option value="header">Header String (Cookie: ...)</option>
+          </select>
+        </div>
+
+        <div class="modal-field">
+          <div class="preview-header">
+            <label class="modal-label" for="export-preview">Pratinjau:</label>
+            <span id="export-preview-info" class="preview-info">0 item</span>
+          </div>
+          <textarea id="export-preview" class="modal-textarea" readonly spellcheck="false"></textarea>
+        </div>
+
+        <div class="modal-actions">
+          <button id="btn-copy-export" class="btn-modal-secondary">📋 Salin</button>
+          <button id="btn-download-export" class="btn-modal-primary">💾 Unduh File</button>
+        </div>
+      </div>
+
+      <!-- IMPORT PANEL -->
+      <div id="panel-import" class="modal-panel" style="display: none;">
+        <div class="modal-field">
+          <div class="import-file-row">
+            <label class="btn-modal-file" for="import-file-input">
+              📁 Pilih File (.json / .txt)
+              <input type="file" id="import-file-input" accept=".json,.txt" style="display:none;" />
+            </label>
+            <span id="import-file-name" class="import-file-name">atau paste teks:</span>
+          </div>
+          <textarea id="import-textarea" class="modal-textarea" placeholder="Paste data JSON atau format Netscape di sini…" spellcheck="false"></textarea>
+        </div>
+
+        <div id="import-detected-bar" class="import-detected-bar" style="display: none;">
+          <span id="import-detected-text"></span>
+        </div>
+
+        <div id="import-session-name-row" class="modal-field" style="display: none;">
+          <label class="modal-label" for="import-session-name">Nama Sesi Baru:</label>
+          <input type="text" id="import-session-name" class="input-field" placeholder="Nama sesi…" maxlength="40" />
+        </div>
+
+        <div class="modal-actions">
+          <button id="btn-do-import" class="btn-modal-primary" disabled>📥 Impor Data</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
 
   <div id="toast" class="toast toast-hidden" aria-live="polite"></div>
 

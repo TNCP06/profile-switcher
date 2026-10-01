@@ -9,6 +9,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Import & Export feature with multi-format support:
+  - **JSON (Standard / Cookie-Editor / EditThisCookie)** format for cross-extension and automation compatibility
+  - **JSON (Profile Switcher Backup)** format for full multi-profile migration across devices
+  - **Netscape HTTP Cookie text** format for `curl`, `yt-dlp`, and `wget`
+  - **Header String (`Cookie: ...`)** format for HTTP requests and API testing
+- Import/Export modal UI in popup with live preview, copy-to-clipboard, file download, file upload (`.json`, `.txt`), format auto-detection, and session naming
+- `GET_CURRENT_TAB_COOKIES`, `IMPORT_SESSIONS`, and `IMPORT_SINGLE_SESSION` message handlers in background service worker
+- `importSessions` atomic batch merge method in `storageManager.js`
 - `"browsingData"` permission in `manifest.json` for client-side storage cleanup (`localStorage`, `indexedDB`, `cacheStorage`, `serviceWorkers`) on Log Out without revoking backend session tokens
 
 ### Fixed

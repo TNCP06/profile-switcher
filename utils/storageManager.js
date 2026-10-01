@@ -120,6 +120,46 @@ async function saveSession(sessionId, sessionData) {
 }
 
 /**
+ * importSessions(newSessions) — Merge object sessions yang diimpor ke storage.
+ *
+ * @param {Object} newSessions - Object { [sessionId]: sessionData }
+ * @returns {Promise<{ importedCount: number }>}
+ */
+async function importSessions(newSessions) {
+  try {
+    const existing = await getAllSessions();
+    let importedCount = 0;
+
+    for (const [id, sessionData] of Object.entries(newSessions)) {
+      if (!sessionData || !sessionData.cookies || !Array.isArray(sessionData.cookies)) {
+        continue;
+      }
+      let targetId = id;
+      if (existing[targetId]) {
+        targetId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      }
+
+      existing[targetId] = {
+        name: sessionData.name || 'Imported Session',
+        domain: sessionData.domain || 'unknown',
+        url: sessionData.url || `https://${sessionData.domain || ''}/`,
+        extraDomains: sessionData.extraDomains || [],
+        savedAt: sessionData.savedAt || Date.now(),
+        cookieCount: sessionData.cookies.length,
+        cookies: sessionData.cookies,
+      };
+      importedCount++;
+    }
+
+    await chromeStorageSet({ [STORAGE_KEY]: existing });
+    return { importedCount };
+  } catch (err) {
+    console.error('[StorageManager] importSessions error:', err);
+    throw err;
+  }
+}
+
+/**
  * deleteSession(sessionId) — Hapus satu session dari storage.
  *
  * @param {string} sessionId
@@ -258,6 +298,7 @@ globalThis.storageManager = {
   getAllSessions,
   getSession,
   saveSession,
+  importSessions,
   deleteSession,
   clearAllSessions,
   getStorageInfo,
