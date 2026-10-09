@@ -83,6 +83,11 @@ Same steps as Chrome, with two required extra steps:
 2. Click the **✕** button
 3. The session is removed from the list ✓
 
+**Export & Import:**
+1. Click **Import / Export** in the action row
+2. **Export:** Choose source and format (JSON Standard, Profile Switcher Backup, Netscape HTTP text, Header String) → Click **Copy** or **Download**
+3. **Import:** Upload a `.json`/`.txt` file or paste text → Click **Import Data** to migrate sessions across devices ✓
+
 ---
 
 ## Debugging
